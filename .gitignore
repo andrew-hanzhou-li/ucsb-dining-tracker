@@ -1,0 +1,5 @@
+# Wi-Fi password and API key
+door_sensor/secrets.h
+# Local database and Python cache
+dining.db
+__pycache__/
