@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UCSB Dining: How Full?</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f3f5f8;
+      color: #1c2330;
+      margin: 0;
+      padding: 24px 16px;
+    }
+    main {
+      max-width: 520px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 24px;
+      margin: 0 0 4px;
+    }
+    #updated {
+      color: #5b6472;
+      font-size: 14px;
+      margin-bottom: 20px;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 10px;
+    }
+    .name {
+      font-weight: 600;
+      font-size: 18px;
+    }
+    .percent {
+      font-weight: 600;
+    }
+    .track {
+      height: 14px;
+      background: #e3e7ec;
+      border-radius: 7px;
+      overflow: hidden;
+    }
+    .fill {
+      height: 100%;
+      border-radius: 7px;
+      transition: width 0.6s;
+    }
+    .detail {
+      color: #5b6472;
+      font-size: 13px;
+      margin-top: 8px;
+    }
+    .closed .name, .closed .percent {
+      color: #9aa3ae;
+    }
+    #error {
+      color: #b3261e;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>How full are the dining halls?</h1>
+    <div id="updated">Loading...</div>
+    <div id="error"></div>
+    <div id="halls"></div>
+  </main>
+
+  <script>
+    // Pick a bar color from how full the hall is
+    function barColor(percent) {
+      if (percent < 40) return "#2e8b47";   // green: plenty of seats
+      if (percent < 75) return "#d98a14";   // orange: getting busy
+      return "#c0392b";                      // red: packed
+    }
+
+    // Build the HTML for one hall's card
+    function hallCard(hall) {
+      if (hall.status === "closed") {
+        return `
+          <div class="card closed">
+            <div class="row">
+              <span class="name">${hall.name}</span>
+              <span class="percent">Closed</span>
+            </div>
+            <div class="track"></div>
+          </div>`;
+      }
+      return `
+        <div class="card">
+          <div class="row">
+            <span class="name">${hall.name}</span>
+            <span class="percent">${hall.percent}% full</span>
+          </div>
+          <div class="track">
+            <div class="fill"
+                 style="width: ${hall.percent}%; background: ${barColor(hall.percent)}">
+            </div>
+          </div>
+          <div class="detail">
+            About ${hall.people} of ${hall.capacity} seats taken · ${hall.meal}
+          </div>
+        </div>`;
+    }
+
+    // Ask the backend for the latest numbers and redraw the page
+    async function refresh() {
+      try {
+        const response = await fetch("/status");
+        const data = await response.json();
+
+        let html = "";
+        for (const hall of data.halls) {
+          html += hallCard(hall);
+        }
+        document.getElementById("halls").innerHTML = html;
+        document.getElementById("updated").textContent =
+          "Updated " + new Date().toLocaleTimeString();
+        document.getElementById("error").textContent = "";
+      } catch (err) {
+        document.getElementById("error").textContent =
+          "Can't reach the server. Is it running?";
+      }
+    }
+
+    refresh();                   // once right away
+    setInterval(refresh, 1000);  // then every 1 second
+  </script>
+</body>
+</html>
