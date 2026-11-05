@@ -48,11 +48,20 @@ systemctl enable dining
 systemctl restart dining
 
 echo "== HTTPS with Caddy =="
-cat > /etc/caddy/Caddyfile <<EOF
-$DOMAIN {
+# Other sites can share this server, so never replace the whole file once
+# it's in use: only add this app's block, and only if it isn't there yet.
+CADDYFILE=/etc/caddy/Caddyfile
+SITE_BLOCK="$DOMAIN {
     reverse_proxy 127.0.0.1:8000
-}
-EOF
+}"
+if grep -qF "$DOMAIN {" "$CADDYFILE"; then
+    echo "$DOMAIN is already in the Caddyfile; leaving it as it is"
+elif grep -qF "/usr/share/caddy" "$CADDYFILE"; then
+    # Fresh install: this is Caddy's sample page, which would take over port 80
+    echo "$SITE_BLOCK" > "$CADDYFILE"
+else
+    printf '\n%s\n' "$SITE_BLOCK" >> "$CADDYFILE"
+fi
 systemctl reload caddy || systemctl restart caddy
 
 echo
