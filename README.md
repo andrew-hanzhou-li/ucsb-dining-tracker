@@ -15,6 +15,7 @@ An unofficial student project, not affiliated with UCSB Housing, Dining & Auxili
 - **Correct:** people who leave side by side get counted as one exit, so the naive count drifts high. Each hall closes empty, so after each meal k = entries ÷ sensed exits, pooled over the last 10 meals of the same type. Live occupancy = entries − k × exits, kept between 0 and capacity.
 - **Check:** `simulate.py` makes two weeks of fake meals where the true count is known. With 12% of exits hidden, it learns k = 1.134 (true value 1.136) and cuts the average error from 45 people to 7.
 - **Show:** `index.html` asks the server for `/status` every second and draws a bar per hall.
+- **Plan:** `/typical` averages the same weekday over the last 8 weeks (at least 3 with data) in 15-minute slots. Under each bar, a small chart shows how full that meal usually gets, and when it is usually quietest while there's still time to eat.
 
 ## Tech
 

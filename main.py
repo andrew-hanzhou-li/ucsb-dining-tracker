@@ -141,6 +141,11 @@ def correction_factor(hall, meal_name, now):
     return total_in / total_out, meals_used
 
 
+def people_inside(entries, exits, k, capacity):
+    """entries - k * exits, kept between 0 and capacity."""
+    return max(0, min(entries - k * exits, capacity))
+
+
 def estimate_occupancy(hall, now):
     """Everything the website needs to know about one hall at time `now`."""
     display_name, capacity = get_hall(hall)
@@ -156,8 +161,7 @@ def estimate_occupancy(hall, now):
     exits = count_events(hall, "exit", start, now)
     k, meals_used = correction_factor(hall, meal_name, now)
 
-    people = entries - k * exits
-    people = max(0, min(people, capacity))      # keep it between 0 and capacity
+    people = people_inside(entries, exits, k, capacity)
 
     result["status"] = "open"
     result["meal"] = meal_name
@@ -167,6 +171,78 @@ def estimate_occupancy(hall, now):
     result["k_meals_used"] = meals_used
     result["people"] = round(people)
     result["percent"] = round(100 * people / capacity)
+    return result
+
+
+# ------------------------------------------------------------
+# A typical day: how full each hall usually is, from past weeks
+# ------------------------------------------------------------
+
+TYPICAL_WEEKS = 8          # average this many past weeks of the same weekday
+TYPICAL_MIN_WEEKS = 3      # with fewer usable weeks, show nothing rather than guess
+SLOT_MINUTES = 15
+MIN_MEAL_ENTRIES = 50      # the correction factor's "too little data" rule
+
+# Past weeks don't change during a day, so each hall's answer is worked out
+# once per day: {hall: (date, result)}
+_typical_cache = {}
+
+
+def typical_meal(hall, today, meal_name, capacity):
+    """How full `hall` usually is in each 15-minute slot of one meal, averaged
+    over the same weekday in past weeks. None if there are too few weeks."""
+    start, end = meal_window(today, meal_name)
+    slot_starts = []
+    t = start
+    while t < end:
+        slot_starts.append(t)
+        t += timedelta(minutes=SLOT_MINUTES)
+
+    totals = [0.0] * len(slot_starts)
+    weeks_used = 0
+    for weeks_back in range(1, TYPICAL_WEEKS + 1):
+        past_start, past_end = meal_window(today - timedelta(weeks=weeks_back), meal_name)
+        # Skip closed days and days the sensor was off
+        if count_events(hall, "entrance", past_start, past_end) < MIN_MEAL_ENTRIES:
+            continue
+        k, _ = correction_factor(hall, meal_name, past_start)
+        for i, slot_start in enumerate(slot_starts):
+            # Measure in the middle of each slot: at its very start the hall
+            # may have only just opened.
+            at = past_start + (slot_start - start) + timedelta(minutes=SLOT_MINUTES / 2)
+            entries = count_events(hall, "entrance", past_start, at)
+            exits = count_events(hall, "exit", past_start, at)
+            totals[i] += people_inside(entries, exits, k, capacity)
+        weeks_used += 1
+
+    if weeks_used < TYPICAL_MIN_WEEKS:
+        return None
+    return {
+        "meal": meal_name,
+        "weeks": weeks_used,
+        "slots": [
+            {"time": slot_start.strftime("%H:%M"),
+             "percent": round(100 * total / weeks_used / capacity)}
+            for slot_start, total in zip(slot_starts, totals)
+        ],
+    }
+
+
+def typical_day(hall, today):
+    """Every meal of `today` that has enough history (see typical_meal)."""
+    cached = _typical_cache.get(hall)
+    if cached is not None and cached[0] == today:
+        return cached[1]
+
+    _, capacity = get_hall(hall)
+    meals = []
+    for meal_name, _, _ in MEALS:
+        meal = typical_meal(hall, today, meal_name, capacity)
+        if meal is not None:
+            meals.append(meal)
+    result = {"hall": hall, "date": today.isoformat(), "slot_minutes": SLOT_MINUTES,
+              "meals": meals}
+    _typical_cache[hall] = (today, result)
     return result
 
 
@@ -233,6 +309,13 @@ async def get_status():
     for row in halls:
         results.append(estimate_occupancy(row[0], now))
     return {"updated": now.isoformat(timespec="seconds"), "halls": results}
+
+
+@app.get("/typical")
+async def get_typical(hall: str):
+    if get_hall(hall) is None:
+        raise HTTPException(status_code=404, detail=f"Unknown hall: {hall}")
+    return typical_day(hall, datetime.now().date())
 
 
 @app.get("/")

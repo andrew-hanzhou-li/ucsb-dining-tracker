@@ -26,6 +26,7 @@
       margin-bottom: 20px;
     }
     .card {
+      position: relative;
       background: white;
       border-radius: 12px;
       padding: 16px;
@@ -64,6 +65,55 @@
     .closed .name, .closed .percent {
       color: #9aa3ae;
     }
+    /* "Usually" chart: how full the hall tends to be through today's meal */
+    .typical {
+      margin-top: 14px;
+    }
+    .typical-text {
+      color: #5b6472;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+    .bars {
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+      height: 40px;
+    }
+    .bar {
+      flex: 1;
+      min-height: 2px;
+      border-radius: 2px 2px 0 0;
+      background: #aab3bf;
+    }
+    .bar.past {
+      background: #d5dae1;
+    }
+    .bar.now {
+      background: #3d4a5c;
+    }
+    .bar:hover, .bar.active {
+      outline: 2px solid #1c2330;
+      outline-offset: 1px;
+    }
+    .axis {
+      display: flex;
+      justify-content: space-between;
+      color: #8a93a0;
+      font-size: 11px;
+      margin-top: 4px;
+    }
+    .tip {
+      position: absolute;
+      transform: translateX(-50%);
+      background: #1c2330;
+      color: white;
+      font-size: 12px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      white-space: nowrap;
+      pointer-events: none;
+    }
     #error {
       color: #b3261e;
       font-size: 14px;
@@ -86,33 +136,207 @@
       return "#c0392b";                      // red: packed
     }
 
-    // Build the HTML for one hall's card
-    function hallCard(hall) {
+    // The live part of one hall's card: name, bar and numbers
+    function liveHtml(hall) {
       if (hall.status === "closed") {
         return `
-          <div class="card closed">
-            <div class="row">
-              <span class="name">${hall.name}</span>
-              <span class="percent">Closed</span>
-            </div>
-            <div class="track"></div>
-          </div>`;
-      }
-      return `
-        <div class="card">
           <div class="row">
             <span class="name">${hall.name}</span>
-            <span class="percent">${hall.percent}% full</span>
+            <span class="percent">Closed</span>
           </div>
-          <div class="track">
-            <div class="fill"
-                 style="width: ${hall.percent}%; background: ${barColor(hall.percent)}">
-            </div>
+          <div class="track"></div>`;
+      }
+      return `
+        <div class="row">
+          <span class="name">${hall.name}</span>
+          <span class="percent">${hall.percent}% full</span>
+        </div>
+        <div class="track">
+          <div class="fill"
+               style="width: ${hall.percent}%; background: ${barColor(hall.percent)}">
           </div>
-          <div class="detail">
-            About ${hall.people} of ${hall.capacity} seats taken · ${hall.meal}
-          </div>
+        </div>
+        <div class="detail">
+          About ${hall.people} of ${hall.capacity} seats taken · ${hall.meal}
         </div>`;
+    }
+
+    // ---------- "Usually" chart, from /typical ----------
+
+    const typical = {};     // hall -> the server's answer for today
+    let typicalAsked = false;
+
+    // Meal hours are Santa Barbara time, whatever the phone's own clock says
+    function campusNow() {
+      const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "America/Los_Angeles", weekday: "long",
+        hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+      }).formatToParts(new Date());
+      const get = type => parts.find(p => p.type === type).value;
+      return { time: get("hour") + ":" + get("minute"), weekday: get("weekday") };
+    }
+
+    // "19:45" -> "7:45 PM"
+    function clockTime(hhmm) {
+      const [h, m] = hhmm.split(":").map(Number);
+      // A no-break space keeps "7:00 AM" on one line
+      return (h % 12 || 12) + ":" + String(m).padStart(2, "0") + (h < 12 ? "\u00a0AM" : "\u00a0PM");
+    }
+
+    // "17:00" -> "5 PM", for the ends of the chart
+    function hourLabel(hhmm) {
+      const [h, m] = hhmm.split(":").map(Number);
+      const short = h % 12 || 12;
+      return (m === 0 ? short : short + ":" + String(m).padStart(2, "0")) + (h < 12 ? " AM" : " PM");
+    }
+
+    // "20% full", or "nearly empty" when a number that small would look odd
+    function fullness(percent) {
+      return percent < 5 ? "nearly empty" : percent + "% full";
+    }
+
+    function minutesOf(hhmm) {
+      const [h, m] = hhmm.split(":").map(Number);
+      return h * 60 + m;
+    }
+
+    // The meal to show: the one going on now, or else the next one today
+    function mealToShow(hall, now) {
+      const meals = (typical[hall.hall] || {}).meals || [];
+      if (hall.status === "open") {
+        return meals.find(m => m.meal === hall.meal) || null;
+      }
+      return meals.find(m => m.slots[0].time > now.time) || null;
+    }
+
+    // Every hall empties as it closes, so the last minutes are always the
+    // quietest; that's no use to someone who wants to eat. Only suggest times
+    // that leave at least this long before closing.
+    const MINUTES_TO_EAT = 30;
+
+    // The sentence above the chart, or "" if there's no good time left
+    function quietestText(meal, nowIndex, now, slotMinutes) {
+      const last = meal.slots[meal.slots.length - 1];
+      const closes = minutesOf(last.time) + slotMinutes;
+      const choices = meal.slots.filter((slot, i) =>
+        i >= nowIndex && minutesOf(slot.time) <= closes - MINUTES_TO_EAT);
+      if (choices.length === 0) return "";
+      const quietest = choices.reduce((a, b) => (b.percent < a.percent ? b : a));
+      if (nowIndex >= 0 && quietest === meal.slots[nowIndex]) {
+        return `On ${now.weekday}s it's usually quietest right now`;
+      }
+      const start = nowIndex >= 0 ? "Usually quietest" : `Next: ${meal.meal}, usually quietest`;
+      return `${start} around ${clockTime(quietest.time)} (${fullness(quietest.percent)})`;
+    }
+
+    function typicalHtml(meal, nowIndex, now, slotMinutes) {
+      const busiest = Math.max(...meal.slots.map(s => s.percent), 1);
+      const text = quietestText(meal, nowIndex, now, slotMinutes);
+
+      let bars = "";
+      meal.slots.forEach((slot, i) => {
+        let kind = "";
+        if (i < nowIndex) kind = " past";
+        if (i === nowIndex) kind = " now";
+        const height = Math.round(100 * slot.percent / busiest);
+        bars += `<div class="bar${kind}" style="height: ${height}%"
+                      data-tip="${clockTime(slot.time)} · usually ${fullness(slot.percent)}"></div>`;
+      });
+      const end = minutesOf(meal.slots[meal.slots.length - 1].time) + slotMinutes;
+      const endTime = String(Math.floor(end / 60)).padStart(2, "0") + ":" + String(end % 60).padStart(2, "0");
+      const label = `How full ${meal.meal} usually is on ${now.weekday}s, from the last ` +
+                    `${meal.weeks} weeks.` + (text ? ` ${text}.` : "");
+      return `
+        ${text ? `<div class="typical-text">${text}</div>` : ""}
+        <div class="bars" role="img" aria-label="${label}">${bars}</div>
+        <div class="axis" aria-hidden="true">
+          <span>${hourLabel(meal.slots[0].time)}</span><span>${hourLabel(endTime)}</span>
+        </div>`;
+    }
+
+    // Redraw the chart only when something it shows changes, so a hover
+    // isn't lost every second when the live numbers refresh
+    function updateTypical(card, hall) {
+      const box = card.querySelector(".typical");
+      const now = campusNow();
+      const meal = mealToShow(hall, now);
+      if (!meal) {
+        box.innerHTML = "";
+        box.dataset.key = "";
+        return;
+      }
+      const slotMinutes = typical[hall.hall].slot_minutes;
+      const nowIndex = hall.status === "open"
+        ? Math.floor((minutesOf(now.time) - minutesOf(meal.slots[0].time)) / slotMinutes)
+        : -1;
+      // A phone clock a little off from the server's can put "now" past the
+      // last slot; then there is nothing ahead to show
+      if (nowIndex >= meal.slots.length) {
+        box.innerHTML = "";
+        box.dataset.key = "";
+        return;
+      }
+      const key = [typical[hall.hall].date, meal.meal, nowIndex].join("|");
+      if (box.dataset.key === key) return;
+      box.dataset.key = key;
+      box.innerHTML = typicalHtml(meal, nowIndex, now, slotMinutes);
+    }
+
+    // Past weeks change once a day at most, so this is fetched now and then,
+    // not every second like /status
+    async function loadTypical(halls) {
+      for (const hall of halls) {
+        try {
+          const response = await fetch("/typical?hall=" + encodeURIComponent(hall));
+          if (response.ok) typical[hall] = await response.json();
+        } catch (err) {
+          // No chart this time; the live numbers still work
+        }
+      }
+    }
+
+    // One tooltip, moved to whichever bar is pointed at or tapped
+    const tip = document.createElement("div");
+    tip.className = "tip";
+    tip.hidden = true;
+
+    function showTip(bar) {
+      const card = bar.closest(".card");
+      document.querySelectorAll(".bar.active").forEach(b => b.classList.remove("active"));
+      bar.classList.add("active");
+      card.appendChild(tip);
+      tip.textContent = bar.dataset.tip;
+      tip.hidden = false;
+      const barBox = bar.getBoundingClientRect();
+      const cardBox = card.getBoundingClientRect();
+      const half = tip.offsetWidth / 2;
+      // Keep the tooltip inside the card at the left and right ends
+      const x = Math.min(Math.max(barBox.left + barBox.width / 2 - cardBox.left, half),
+                         cardBox.width - half);
+      tip.style.left = x + "px";
+      tip.style.top = (barBox.top - cardBox.top - tip.offsetHeight - 6) + "px";
+    }
+
+    function hideTip() {
+      tip.hidden = true;
+      document.querySelectorAll(".bar.active").forEach(b => b.classList.remove("active"));
+    }
+
+    const hallsBox = document.getElementById("halls");
+    hallsBox.addEventListener("pointerover", e => { if (e.target.dataset.tip) showTip(e.target); });
+    hallsBox.addEventListener("pointerout", e => { if (e.target.dataset.tip) hideTip(); });
+    hallsBox.addEventListener("pointerdown", e => { if (e.target.dataset.tip) showTip(e.target); });
+
+    // Find or make the card for one hall
+    function cardFor(hall) {
+      let card = hallsBox.querySelector(`[data-hall="${CSS.escape(hall.hall)}"]`);
+      if (!card) {
+        card = document.createElement("div");
+        card.dataset.hall = hall.hall;
+        card.innerHTML = '<div class="live"></div><div class="typical"></div>';
+        hallsBox.appendChild(card);
+      }
+      return card;
     }
 
     // Ask the backend for the latest numbers and redraw the page
@@ -121,11 +345,16 @@
         const response = await fetch("/status");
         const data = await response.json();
 
-        let html = "";
-        for (const hall of data.halls) {
-          html += hallCard(hall);
+        if (!typicalAsked) {
+          typicalAsked = true;      // once; after that, every 15 minutes (below)
+          await loadTypical(data.halls.map(h => h.hall));
         }
-        document.getElementById("halls").innerHTML = html;
+        for (const hall of data.halls) {
+          const card = cardFor(hall);
+          card.className = hall.status === "closed" ? "card closed" : "card";
+          card.querySelector(".live").innerHTML = liveHtml(hall);
+          updateTypical(card, hall);
+        }
         document.getElementById("updated").textContent =
           "Updated " + new Date().toLocaleTimeString();
         document.getElementById("error").textContent = "";
@@ -134,6 +363,13 @@
           "Can't reach the server. Is it running?";
       }
     }
+
+    // Every 15 minutes, in case the day changed or a meal now has enough history
+    setInterval(async () => {
+      const halls = [...hallsBox.querySelectorAll("[data-hall]")].map(c => c.dataset.hall);
+      await loadTypical(halls);
+      hallsBox.querySelectorAll(".typical").forEach(box => { box.dataset.key = ""; });
+    }, 15 * 60 * 1000);
 
     refresh();                   // once right away
     setInterval(refresh, 1000);  // then every 1 second

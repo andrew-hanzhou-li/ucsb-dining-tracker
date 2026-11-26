@@ -26,6 +26,7 @@ def clean_main(monkeypatch):
     """Empty events table, known API key, normal meal hours, repo as cwd."""
     main.db.execute("DELETE FROM events")
     main.db.commit()
+    main._typical_cache.clear()
     monkeypatch.setattr(main, "API_KEY", TEST_KEY)
     monkeypatch.setattr(main, "ALWAYS_OPEN", False)
     monkeypatch.chdir(REPO)     # "/" serves index.html from the current folder
