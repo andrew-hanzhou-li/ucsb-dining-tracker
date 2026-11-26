@@ -156,3 +156,14 @@ def test_estimate_occupancy_never_above_capacity():
     result = main.estimate_occupancy("dlg", at("18:00"))
     assert result["people"] == 400
     assert result["percent"] == 100
+
+
+def test_event_counts_use_the_index():
+    # Without the index every count reads the whole events table, which made
+    # /status take over a second with a few months of events.
+    plan = main.db.execute(
+        """EXPLAIN QUERY PLAN SELECT COUNT(*) FROM events
+           WHERE hall = ? AND lane = ? AND time >= ? AND time < ?""",
+        ("portola", "entrance", "2026-10-28T17:00:00", "2026-10-28T21:00:00"),
+    ).fetchall()
+    assert any("events_by_hall_lane_time" in row[-1] for row in plan)
