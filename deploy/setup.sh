@@ -35,7 +35,8 @@ echo "== Python libraries =="
 /opt/dining/venv/bin/pip install -r /opt/dining/requirements.txt
 
 echo "== Database: /var/lib/dining, apart from the code =="
-# Stop the app only while the database moves (nothing to stop the first time)
+# Stop the app here, after the slow pip step, so it is down only for the
+# database move and the restart below (nothing to stop the first time)
 systemctl stop dining 2>/dev/null || true
 mkdir -p /var/lib/dining
 if [ -f /opt/dining/dining.db ]; then
