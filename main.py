@@ -187,10 +187,15 @@ async def record_event(
         time = datetime.now().isoformat()
     else:
         try:
-            time = datetime.fromisoformat(time).isoformat()
+            parsed = datetime.fromisoformat(time)
         except ValueError:
+            parsed = None
+        # Events are counted by comparing local times as text, so a time zone
+        # (Z, +00:00) would be saved but never land in the right meal window.
+        if parsed is None or parsed.tzinfo is not None:
             raise HTTPException(status_code=400,
                                 detail="time must look like 2026-10-28T17:05:00")
+        time = parsed.isoformat()
 
     db.execute("INSERT INTO events VALUES (?, ?, ?)", (hall, lane, time))
     db.commit()

@@ -88,6 +88,14 @@ def test_event_bad_time():
     assert stored_events() == []
 
 
+def test_event_time_with_time_zone_is_refused():
+    # Saved as text with +00:00, it would never be counted in a meal window
+    for t in ["2026-10-28T17:05:00Z", "2026-10-28T17:05:00+00:00"]:
+        r = post_event(hall="portola", lane="entrance", time=t)
+        assert r.status_code == 400
+    assert stored_events() == []
+
+
 def test_event_hall_name_is_not_sql():
     r = post_event(hall="portola' OR '1'='1", lane="entrance")
     assert r.status_code == 404
