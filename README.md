@@ -33,6 +33,8 @@ Open http://127.0.0.1:8000. To make the bars move without hardware, run `python 
 
 `python simulate.py` fills `dining.db` with fake meals and grades the formula (add `matplotlib` for the chart). It deletes events in the dates it simulates, so don't run it on real data.
 
+Tests: `python -m pip install -r requirements-dev.txt`, then `python -m pytest`.
+
 ## ESP32
 
 Copy `door_sensor/secrets.example.h` to `door_sensor/secrets.h` and fill in your Wi-Fi, server address and API key. Then open `door_sensor/door_sensor.ino` in Arduino IDE, choose **ESP32 Dev Module** (the classic ESP32, not C3/S3), and upload. A push button or the beam receiver goes between GPIO 4 and GND.
