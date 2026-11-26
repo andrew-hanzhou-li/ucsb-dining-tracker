@@ -109,3 +109,22 @@ def test_endpoint_shape_and_unknown_hall():
     assert r.status_code == 200
     assert r.json()["meals"] == [] and r.json()["slot_minutes"] == 15
     assert client.get("/typical", params={"hall": "nowhere"}).status_code == 404
+
+
+def test_a_week_with_the_exit_sensor_off_is_skipped():
+    for weeks_back in (1, 2, 3):
+        add_dinner(TODAY - timedelta(weeks=weeks_back))
+    broken = TODAY - timedelta(weeks=4)
+    add_events("portola", "entrance", [datetime.fromisoformat(f"{broken}T17:05")] * 400)   # no exits at all
+    meal = dinner(main.typical_day("portola", TODAY))
+    assert meal["weeks"] == 3
+    by_time = {s["time"]: s["percent"] for s in meal["slots"]}
+    assert by_time["17:00"] == 17 and by_time["20:00"] == 0
+
+
+def test_a_hall_with_no_seats_does_not_crash(monkeypatch):
+    for weeks_back in (1, 2, 3):
+        add_dinner(TODAY - timedelta(weeks=weeks_back))
+    monkeypatch.setattr(main, "get_hall", lambda hall: ("Portola", 0))
+    assert all(s["percent"] == 0 for s in dinner(main.typical_day("portola", TODAY))["slots"])
+    assert main.estimate_occupancy("portola", datetime.fromisoformat(f"{TODAY}T18:00"))["percent"] == 0

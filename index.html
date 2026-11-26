@@ -323,9 +323,20 @@
     }
 
     const hallsBox = document.getElementById("halls");
-    hallsBox.addEventListener("pointerover", e => { if (e.target.dataset.tip) showTip(e.target); });
-    hallsBox.addEventListener("pointerout", e => { if (e.target.dataset.tip) hideTip(); });
-    hallsBox.addEventListener("pointerdown", e => { if (e.target.dataset.tip) showTip(e.target); });
+    // A mouse (or pen) shows the tooltip while it's over a bar
+    hallsBox.addEventListener("pointerover", e => {
+      if (e.pointerType !== "touch" && e.target.dataset.tip) showTip(e.target);
+    });
+    hallsBox.addEventListener("pointerout", e => {
+      if (e.pointerType !== "touch" && e.target.dataset.tip) hideTip();
+    });
+    // A finger has no hover: a tap on a bar shows it until the next tap elsewhere.
+    // (Lifting the finger also sends pointerout, which mustn't hide it.)
+    document.addEventListener("pointerdown", e => {
+      if (e.pointerType !== "touch") return;
+      if (e.target.dataset && e.target.dataset.tip) showTip(e.target);
+      else hideTip();
+    });
 
     // Find or make the card for one hall
     function cardFor(hall) {

@@ -36,6 +36,9 @@ ALWAYS_OPEN = False
 # How many past meals to use when computing the correction factor k
 K_MEALS = 10
 
+# A past meal with fewer entries than this was closed or had a sensor off
+MIN_MEAL_ENTRIES = 50
+
 # ------------------------------------------------------------
 # Database setup
 # ------------------------------------------------------------
@@ -101,6 +104,22 @@ def count_events(hall, lane, start, end):
     return row[0]
 
 
+def usable_meal(hall, meal_name, day):
+    """(entries, exits) for one finished meal, or None if its numbers can't be
+    trusted: the hall was closed, a sensor was off, or k is clearly a hardware
+    problem rather than behavior. Shared by k and the typical-day chart."""
+    start, end = meal_window(day, meal_name)
+    entries = count_events(hall, "entrance", start, end)
+    # People are still walking out after closing, so give exits an extra hour
+    exits = count_events(hall, "exit", start, end + timedelta(hours=1))
+    if entries < MIN_MEAL_ENTRIES or exits == 0:
+        return None
+    k = entries / exits
+    if k < 0.8 or k > 1.6:
+        return None
+    return entries, exits
+
+
 def correction_factor(hall, meal_name, now):
     """
     k = total entries / total sensed exits, pooled over the last K_MEALS
@@ -113,22 +132,12 @@ def correction_factor(hall, meal_name, now):
 
     for days_back in range(1, 61):
         day = now.date() - timedelta(days=days_back)
-        window = meal_window(day, meal_name)
-        if window is None:          # e.g. the "demo" meal has no history
+        if meal_window(day, meal_name) is None:     # e.g. the "demo" meal has no history
             break
-        start, end = window
-
-        entries = count_events(hall, "entrance", start, end)
-        # People are still walking out after closing, so give exits an extra hour
-        exits = count_events(hall, "exit", start, end + timedelta(hours=1))
-
-        # Skip meals with too little data (closed that day, sensor off...)
-        if entries < 50 or exits == 0:
+        counts = usable_meal(hall, meal_name, day)
+        if counts is None:
             continue
-        # Skip meals where k is clearly a hardware problem, not behavior
-        k = entries / exits
-        if k < 0.8 or k > 1.6:
-            continue
+        entries, exits = counts
 
         total_in += entries
         total_out += exits
@@ -144,6 +153,11 @@ def correction_factor(hall, meal_name, now):
 def people_inside(entries, exits, k, capacity):
     """entries - k * exits, kept between 0 and capacity."""
     return max(0, min(entries - k * exits, capacity))
+
+
+def percent_full(people, capacity):
+    # A hall saved with no seats would otherwise divide by zero
+    return round(100 * people / capacity) if capacity > 0 else 0
 
 
 def estimate_occupancy(hall, now):
@@ -170,7 +184,7 @@ def estimate_occupancy(hall, now):
     result["k"] = round(k, 3)
     result["k_meals_used"] = meals_used
     result["people"] = round(people)
-    result["percent"] = round(100 * people / capacity)
+    result["percent"] = percent_full(people, capacity)
     return result
 
 
@@ -181,7 +195,6 @@ def estimate_occupancy(hall, now):
 TYPICAL_WEEKS = 8          # average this many past weeks of the same weekday
 TYPICAL_MIN_WEEKS = 3      # with fewer usable weeks, show nothing rather than guess
 SLOT_MINUTES = 15
-MIN_MEAL_ENTRIES = 50      # the correction factor's "too little data" rule
 
 # Past weeks don't change during a day, so each hall's answer is worked out
 # once per day: {hall: (date, result)}
@@ -201,10 +214,12 @@ def typical_meal(hall, today, meal_name, capacity):
     totals = [0.0] * len(slot_starts)
     weeks_used = 0
     for weeks_back in range(1, TYPICAL_WEEKS + 1):
-        past_start, past_end = meal_window(today - timedelta(weeks=weeks_back), meal_name)
-        # Skip closed days and days the sensor was off
-        if count_events(hall, "entrance", past_start, past_end) < MIN_MEAL_ENTRIES:
+        past_day = today - timedelta(weeks=weeks_back)
+        # Skip closed days and days a sensor was off: with no exits counted,
+        # the hall would look like it filled up and never emptied
+        if usable_meal(hall, meal_name, past_day) is None:
             continue
+        past_start, _ = meal_window(past_day, meal_name)
         k, _ = correction_factor(hall, meal_name, past_start)
         for i, slot_start in enumerate(slot_starts):
             # Measure in the middle of each slot: at its very start the hall
@@ -222,7 +237,7 @@ def typical_meal(hall, today, meal_name, capacity):
         "weeks": weeks_used,
         "slots": [
             {"time": slot_start.strftime("%H:%M"),
-             "percent": round(100 * total / weeks_used / capacity)}
+             "percent": percent_full(total / weeks_used, capacity)}
             for slot_start, total in zip(slot_starts, totals)
         ],
     }
