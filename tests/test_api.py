@@ -141,7 +141,7 @@ def test_status_lists_every_hall_by_name(monkeypatch):
     class FixedDatetime(datetime):
         @classmethod
         def now(cls, tz=None):
-            return cls(2026, 10, 28, 18, 30, 0)
+            return cls(2026, 10, 28, 18, 30, 0, tzinfo=tz)
 
     monkeypatch.setattr(main, "datetime", FixedDatetime)
     r = client.get("/status")
