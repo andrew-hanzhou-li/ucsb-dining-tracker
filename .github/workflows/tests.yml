@@ -1,0 +1,40 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run tests
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m pytest -v 2>&1 | tee test-output.txt
+
+      - name: Show failures as annotations
+        # Puts the failing lines on the run's summary page, so a failure can be
+        # read without opening the full log.
+        if: failure()
+        shell: bash
+        run: |
+          [ -f test-output.txt ] || exit 0
+          { grep -E 'FAIL|ERROR|Error|assert|Traceback|failed' test-output.txt || true; tail -n 5 test-output.txt; } \
+            | awk '!seen[$0]++' | head -n 20 | while IFS= read -r line; do echo "::error::${line:0:400}"; done
