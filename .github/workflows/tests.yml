@@ -13,9 +13,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -28,6 +28,15 @@ jobs:
         run: |
           set -o pipefail
           python -m pytest -v 2>&1 | tee test-output.txt
+
+      - name: Post the test summary
+        # Shows how many tests ran (and were skipped) on the run page.
+        if: always()
+        shell: bash
+        run: |
+          [ -f test-output.txt ] || exit 0
+          grep -E "^Ran [0-9]+ tests|^OK|^FAILED|checks passed|[0-9]+ (passed|failed|skipped)|^# (tests|pass|fail|skipped) " test-output.txt \
+            | tail -n 6 | while IFS= read -r line; do echo "::notice::${line:0:400}"; done
 
       - name: Show failures as annotations
         # Puts the failing lines on the run's summary page, so a failure can be
