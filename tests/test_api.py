@@ -166,3 +166,15 @@ def test_home_page_serves_index_html():
     r = client.get("/")
     assert r.status_code == 200
     assert "How full are the dining halls?" in r.text
+
+
+def test_database_path_comes_from_dining_db(tmp_path):
+    # The VPS keeps the database in /var/lib/dining via DINING_DB; a laptop
+    # without it still uses dining.db in the current folder.
+    target = tmp_path / "events.db"
+    code = "import main, sys; sys.stdout.write(main.db.execute('PRAGMA database_list').fetchone()[2])"
+    env = {**os.environ, "DINING_DB": str(target), "DINING_API_KEY": "x"}
+    out = subprocess.run([sys.executable, "-c", code], cwd=REPO, env=env,
+                         capture_output=True, text=True, check=True).stdout
+    assert out == str(target)
+    assert target.exists()
