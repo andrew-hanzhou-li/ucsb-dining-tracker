@@ -2,6 +2,8 @@ from fastapi import FastAPI, HTTPException, Header
 from fastapi.responses import FileResponse
 from typing import Literal
 from datetime import datetime, timedelta
+import hmac
+import logging
 import os
 import sqlite3
 
@@ -13,7 +15,13 @@ app = FastAPI()
 
 # Every device must send this key. On the VPS it comes from /etc/dining.env;
 # on your laptop it falls back to the test key below.
-API_KEY = os.environ.get("DINING_API_KEY", "change-me-to-something-long")
+TEST_API_KEY = "change-me-to-something-long"
+API_KEY = os.environ.get("DINING_API_KEY", TEST_API_KEY)
+if API_KEY == TEST_API_KEY:
+    logging.getLogger("uvicorn.error").warning(
+        "DINING_API_KEY is not set, so the public test key is in use and anyone "
+        "can send events. Fine on a laptop; on a server use /etc/dining.env."
+    )
 
 # Meal hours. PLACEHOLDERS: replace with the real hours from the dining website.
 MEALS = [
@@ -168,7 +176,9 @@ async def record_event(
     time: str | None = None,
     x_api_key: str = Header(default=""),
 ):
-    if x_api_key != API_KEY:
+    # An empty key would let requests with no header in; compare_digest
+    # doesn't give away how much of a wrong key was right.
+    if not API_KEY or not hmac.compare_digest(x_api_key.encode(), API_KEY.encode()):
         raise HTTPException(status_code=401, detail="Wrong or missing API key")
     if get_hall(hall) is None:
         raise HTTPException(status_code=404, detail=f"Unknown hall: {hall}")
@@ -197,6 +207,9 @@ async def get_occupancy(hall: str, at: str | None = None):
         try:
             now = datetime.fromisoformat(at)
         except ValueError:
+            now = None
+        # Meal hours are local times, so a time zone (Z, +00:00) can't be compared
+        if now is None or now.tzinfo is not None:
             raise HTTPException(status_code=400,
                                 detail="at must look like 2026-10-28T18:30:00")
     return estimate_occupancy(hall, now)

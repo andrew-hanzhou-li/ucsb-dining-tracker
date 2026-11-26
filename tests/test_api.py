@@ -1,10 +1,13 @@
+import os
+import subprocess
+import sys
 from datetime import datetime
 
 import pytest
 from fastapi.testclient import TestClient
 
 import main
-from conftest import TEST_KEY
+from conftest import REPO, TEST_KEY
 
 client = TestClient(main.app)
 
@@ -46,6 +49,25 @@ def test_event_rejects_missing_or_wrong_key(key):
     r = post_event(key=key, hall="portola", lane="entrance")
     assert r.status_code == 401
     assert stored_events() == []
+
+
+def test_event_rejects_everything_when_server_key_is_empty(monkeypatch):
+    monkeypatch.setattr(main, "API_KEY", "")
+    for key in (None, ""):
+        assert post_event(key=key, hall="portola", lane="entrance").status_code == 401
+    assert stored_events() == []
+
+
+@pytest.mark.parametrize("key_env, warns", [(None, True), ("a-random-key", False)])
+def test_warns_when_running_with_the_public_test_key(tmp_path, key_env, warns):
+    env = {k: v for k, v in os.environ.items() if k != "DINING_API_KEY"}
+    if key_env:
+        env["DINING_API_KEY"] = key_env
+    # Fresh interpreter in an empty folder, so the import uses its own dining.db
+    code = f"import sys; sys.path.insert(0, {str(REPO)!r}); import main"
+    out = subprocess.run([sys.executable, "-c", code], cwd=tmp_path, env=env,
+                         capture_output=True, text=True, check=True)
+    assert ("DINING_API_KEY is not set" in out.stderr) == warns
 
 
 def test_event_unknown_hall():
@@ -98,6 +120,12 @@ def test_occupancy_unknown_hall():
 
 def test_occupancy_bad_time():
     r = client.get("/occupancy", params={"hall": "portola", "at": "soon"})
+    assert r.status_code == 400
+
+
+@pytest.mark.parametrize("at", ["2026-10-28T18:30:00Z", "2026-10-28T10:30:00-08:00"])
+def test_occupancy_rejects_time_zones(at):
+    r = client.get("/occupancy", params={"hall": "portola", "at": at})
     assert r.status_code == 400
 
 

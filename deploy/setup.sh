@@ -37,7 +37,8 @@ echo "== Python libraries =="
 
 echo "== Secret API key =="
 if [ ! -f /etc/dining.env ]; then
-    echo "DINING_API_KEY=$(openssl rand -hex 24)" > /etc/dining.env
+    # umask: the file is never readable by other users, not even for a moment
+    (umask 077 && echo "DINING_API_KEY=$(openssl rand -hex 24)" > /etc/dining.env)
     chmod 600 /etc/dining.env
 fi
 

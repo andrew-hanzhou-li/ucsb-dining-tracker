@@ -13,6 +13,13 @@ EnvironmentFile=/etc/dining.env
 ExecStart=/opt/dining/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=3
+# Limit what the app can touch if it is ever broken into. It only needs to
+# write in /opt/dining (dining.db); /usr, /etc and /boot become read-only.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=full
+ProtectHome=true
 
 [Install]
 WantedBy=multi-user.target

@@ -20,7 +20,7 @@ while True:
 
     url = f"{SERVER}/event?hall={hall}&lane={lane}"
     request = urllib.request.Request(url, method="POST", headers={"X-API-Key": API_KEY})
-    urllib.request.urlopen(request)
+    urllib.request.urlopen(request, timeout=10)
     print("sent", hall, lane)
 
     time.sleep(0.3)
