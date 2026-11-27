@@ -42,6 +42,9 @@ K_MEALS = 10
 
 db = sqlite3.connect("dining.db", check_same_thread=False)
 db.execute("CREATE TABLE IF NOT EXISTS events (hall TEXT, lane TEXT, time TEXT)")
+# Every count asks for one hall, one lane and a time range: this index answers
+# that without reading the whole table.
+db.execute("CREATE INDEX IF NOT EXISTS events_by_hall_lane_time ON events (hall, lane, time)")
 db.execute("""CREATE TABLE IF NOT EXISTS halls
               (name TEXT PRIMARY KEY, display_name TEXT, capacity INTEGER)""")
 
