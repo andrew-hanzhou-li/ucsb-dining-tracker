@@ -40,7 +40,9 @@ K_MEALS = 10
 # Database setup
 # ------------------------------------------------------------
 
-db = sqlite3.connect("dining.db", check_same_thread=False)
+# On the VPS the database lives in /var/lib/dining (set in dining.service), away
+# from the code; on a laptop it's dining.db in the current folder.
+db = sqlite3.connect(os.environ.get("DINING_DB", "dining.db"), check_same_thread=False)
 db.execute("CREATE TABLE IF NOT EXISTS events (hall TEXT, lane TEXT, time TEXT)")
 # Every count asks for one hall, one lane and a time range: this index answers
 # that without reading the whole table.

@@ -47,7 +47,7 @@ On a fresh Ubuntu 24.04 VPS with a domain pointing at it, copy the repo up and r
 bash deploy/setup.sh your-domain.example.com
 ```
 
-It installs Caddy (HTTPS), turns on the firewall, sets the clock to Pacific time, makes a random API key in `/etc/dining.env`, and runs the app as a systemd service that restarts on crashes and reboots.
+It installs Caddy (HTTPS), turns on the firewall, sets the clock to Pacific time, makes a random API key in `/etc/dining.env`, and runs the app as a systemd service that restarts on crashes and reboots. The database is `/var/lib/dining/dining.db`; the code in `/opt/dining` belongs to root, so the app can't change it. Running the script again on an older setup moves the database there.
 
 ## Files
 

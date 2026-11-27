@@ -29,11 +29,37 @@ echo "== App user and files =="
 id dining >/dev/null 2>&1 || useradd --system --home /opt/dining --shell /usr/sbin/nologin dining
 mkdir -p /opt/dining
 cp main.py index.html requirements.txt /opt/dining/
-chown -R dining:dining /opt/dining
 
 echo "== Python libraries =="
 [ -d /opt/dining/venv ] || python3 -m venv /opt/dining/venv
 /opt/dining/venv/bin/pip install -r /opt/dining/requirements.txt
+
+echo "== Database: /var/lib/dining, apart from the code =="
+# Stop the app here, after the slow pip step, so it is down only for the
+# database move and the restart below (nothing to stop the first time)
+systemctl stop dining 2>/dev/null || true
+mkdir -p /var/lib/dining
+if [ -f /opt/dining/dining.db ]; then
+    if [ -e /var/lib/dining/dining.db ]; then
+        echo "Both /opt/dining/dining.db and /var/lib/dining/dining.db exist."
+        echo "Keeping /var/lib/dining/dining.db; the old file is left where it is."
+    else
+        # Move SQLite's side files too, or the newest events could be lost
+        for f in dining.db dining.db-journal dining.db-wal dining.db-shm; do
+            if [ -e "/opt/dining/$f" ]; then
+                mv "/opt/dining/$f" /var/lib/dining/
+            fi
+        done
+        echo "Moved the database from /opt/dining to /var/lib/dining"
+    fi
+fi
+chown -R dining:dining /var/lib/dining
+chmod 750 /var/lib/dining
+# Only now, with the database out: the code belongs to root and the app can
+# only read it, so if the app is ever broken into it can't rewrite itself.
+# (Older setups gave /opt/dining to the app user.)
+chown -R root:root /opt/dining
+chmod -R u=rwX,go=rX /opt/dining
 
 echo "== Secret API key =="
 if [ ! -f /etc/dining.env ]; then

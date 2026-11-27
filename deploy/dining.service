@@ -7,6 +7,11 @@ After=network.target
 [Service]
 User=dining
 WorkingDirectory=/opt/dining
+# systemd makes /var/lib/dining, owned by the dining user, for the database.
+# The code in /opt/dining belongs to root, so the app can't change it.
+StateDirectory=dining
+StateDirectoryMode=0750
+Environment=DINING_DB=/var/lib/dining/dining.db
 # DINING_API_KEY lives here, so the secret isn't in the code
 EnvironmentFile=/etc/dining.env
 # Only listen on the VPS itself; Caddy handles the outside world (and HTTPS)
@@ -14,11 +19,11 @@ ExecStart=/opt/dining/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=3
 # Limit what the app can touch if it is ever broken into. It only needs to
-# write in /opt/dining (dining.db); /usr, /etc and /boot become read-only.
+# write its database in /var/lib/dining; everything else is read-only.
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true
-ProtectSystem=full
+ProtectSystem=strict
 ProtectHome=true
 
 [Install]
